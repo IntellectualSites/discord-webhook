@@ -1,0 +1,4 @@
+name = "intellectualsites"
+main = "disgit.js"
+type = "javascript"
+compatibility_date = "2023-06-17"
