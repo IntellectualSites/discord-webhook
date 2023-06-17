@@ -1,4 +1,4 @@
-// If true, will send paste of embed json to discord for debugging
+// If true, will send paste of embed json to discord for debugging, abc
 const debug = false;
 
 // Handles event sent by cloudflare

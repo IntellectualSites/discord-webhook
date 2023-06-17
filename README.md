@@ -1,6 +1,8 @@
 # disgit
 A cloudflare worker script which provides better github->discord webhooks than the built in discord webhook executor.
 
+This repository is based on [JRoy/disgit](https://github.com/JRoy/disgit), deploying to IntellectualSites' CF workers via GitHub actions.
+
 ## Supported Events
 The following webhook events are supported as of now;
 * [check_run](https://docs.github.com/en/developers/webhooks-and-events/webhook-events-and-payloads#check_run)
