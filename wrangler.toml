@@ -1,4 +1,17 @@
 name = "intellectualsites"
-main = "disgit.js"
-type = "javascript"
-compatibility_date = "2023-06-17"
+main = "src/index.ts"
+compatibility_date = "2022-11-10"
+usage_model = "bundled"
+
+workers_dev = true
+
+[vars]
+IGNORED_BRANCH_REGEX=""
+IGNORED_BRANCHES=""
+IGNORED_USERS=""
+IGNORED_PAYLOADS=""
+
+# Uses secrets:
+# - PASTE_GG_API_KEY
+# - GITHUB_WEBHOOK_SECRET
+# Run `echo <VALUE> | wrangler secret put <NAME>` for each of these
