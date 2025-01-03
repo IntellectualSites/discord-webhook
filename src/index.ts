@@ -31,7 +31,7 @@ async function handleRequest(request: Request, env: BoundEnv): Promise<Response>
         }
 
         const url = new URL(request.url)
-        let [hookId, hookToken] = url.pathname.substring(1).split("/");
+        let [hookId, hookToken] = (url.pathname + url.search).substring(1).split("/");
 
         if (typeof(hookToken) == 'undefined') {
             return new Response('Missing Webhook Authorization', { status: 400 });
@@ -50,12 +50,6 @@ async function handleRequest(request: Request, env: BoundEnv): Promise<Response>
     }
 }
 
-/**
- * @param {*} json
- * @param {string} event
- * @param {BoundEnv} env
- * @return {String|null}
- */
 function buildEmbed(json: any, event: string, env: BoundEnv): string | null {
     const { action } = json;
 
@@ -207,34 +201,30 @@ function buildEmbed(json: any, event: string, env: BoundEnv): string | null {
     return null;
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPing(json: any) {
-    const { zen, hook, repository, sender } = json;
+function buildPing(json: any): string {
+    const { zen, hook, repository, sender, organization } = json;
+
+    const isOrg = hook['type'] == 'Organization';
+
+    const name = isOrg ? organization['login'] : repository['full_name'];
 
     return JSON.stringify({
-        "embeds": [
+        embeds: [
             {
-                "title": "[" + repository["full_name"] + "] " + hook["type"] + " hook ping received",
-                "description": zen,
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${name}] ${hook.type} hook ping received`,
+                description: zen,
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 12118406
+                color: 12118406
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string|null}
- */
-function buildRelease(json: any) {
+function buildRelease(json: any): string | null {
     const { release, repository, sender } = json;
     const { draft, name, tag_name, body, html_url, prerelease } = release;
 
@@ -247,26 +237,21 @@ function buildRelease(json: any) {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New " + (prerelease ? "pre" : "") + "release published: " + effectiveName,
-                "description": truncate(body, 1000),
-                "url": html_url,
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New ${prerelease ? "pre" : ""}release published: ${effectiveName}`,
+                description: truncate(body, 1000),
+                url: html_url,
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 14573028
+                color: 14573028
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
-function buildPush(json: any, env: BoundEnv) {
+function buildPush(json: any, env: BoundEnv): string | null {
     const { commits, forced, after, repository, ref, compare, sender } = json;
 
     let branch = ref.substring(11);
@@ -275,7 +260,7 @@ function buildPush(json: any, env: BoundEnv) {
         return null;
     }
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
@@ -283,14 +268,14 @@ function buildPush(json: any, env: BoundEnv) {
         return JSON.stringify({
             "embeds": [
                 {
-                    "title": "[" + repository["full_name"] + "] Branch " + branch +  " was force-pushed to `" + shortCommit(after) + "`",
-                    "url": compare.replace("...", ".."),
-                    "author": {
-                        "name": sender["login"],
-                        "url": sender["html_url"],
+                    title: `[${repository["full_name"]}] Branch ${branch} was force-pushed to \`${shortCommit(after)}\``,
+                    url: compare.replace("...", ".."),
+                    author: {
+                        name: sender.login,
+                        url: sender["html_url"],
                         "icon_url": sender["avatar_url"]
                     },
-                    "color": 16722234
+                    color: 16722234
                 }
             ]
         });
@@ -306,8 +291,9 @@ function buildPush(json: any, env: BoundEnv) {
     let lastCommitUrl = "";
     for (let i = 0; i < commits.length; i++) {
         let commit = commits[i];
-        let commitUrl = commit["url"];
-        let line = "[`" + shortCommit(commit["id"]) + "`](" +commitUrl + ") " + truncate(commit["message"].split("\n")[0], 50) + " - " + commit["author"]["username"] + "\n";
+        let commitUrl = commit.url;
+        let line = `[\`${shortCommit(commit.id)}\`](${commitUrl}) ${truncate(commit.message.split("\n")[0], 50)} - ${commit.author.username}
+`;
         if (description.length + line.length >= 1500) {
             break;
         }
@@ -319,54 +305,46 @@ function buildPush(json: any, env: BoundEnv) {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["name"] + ":" + branch + "] " + amount + ` new ${commitWord}`,
-                "description": description,
-                "url": amount === 1 ? lastCommitUrl : compare,
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository.name}:${branch}] ${amount} new ${commitWord}`,
+                description: description,
+                url: amount === 1 ? lastCommitUrl : compare,
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 6120164
+                color: 6120164
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPullReviewComment(json: any) {
+function buildPullReviewComment(json: any): string {
     const { pull_request, comment, repository, sender } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Pull request review comment: #" + pull_request["number"] + " " + pull_request["title"],
-                "description": truncate(comment["body"], 1000),
-                "url": comment["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Pull request review comment: #${pull_request.number} ${pull_request.title}`,
+                description: truncate(comment.body, 1000),
+                url: comment["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 7829367
+                color: 7829367
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPullReview(json: any) {
+function buildPullReview(json: any): string {
     const { pull_request, review, repository, action, sender } = json;
 
     let state = "reviewed";
     let color = 7829367;
-    switch (review["state"]) {
+    switch (review.state) {
         case "approved": {
             state = "approved";
             color = 37378;
@@ -388,163 +366,136 @@ function buildPullReview(json: any) {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Pull request " + state + ": #" + pull_request["number"] + " " + pull_request["title"],
-                "description": truncate(review["body"], 1000),
-                "url": review["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Pull request ${state}: #${pull_request.number} ${pull_request.title}`,
+                description: truncate(review.body, 1000),
+                url: review["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": color
+                color: color
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPullReadyReview(json: any) {
+function buildPullReadyReview(json: any): string {
     const { pull_request, repository, sender } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Pull request marked for review: #" + pull_request["number"] + " " + pull_request["title"],
-                "url": pull_request["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Pull request marked for review: #${pull_request.number} ${pull_request.title}`,
+                url: pull_request["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 37378
+                color: 37378
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPullDraft(json: any) {
+function buildPullDraft(json: any): string {
     const { pull_request, repository, sender } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Pull request marked as draft: #" + pull_request["number"] + " " + pull_request["title"],
-                "url": pull_request["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Pull request marked as draft: #${pull_request.number} ${pull_request.title}`,
+                url: pull_request["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 10987431
+                color: 10987431
             }
         ]
     });
 }
 
-
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPullReopen(json: any) {
+function buildPullReopen(json: any): string {
     const { pull_request, repository, sender } = json;
 
-    let draft = pull_request["draft"];
+    let draft = pull_request.draft;
     let color = draft ? 10987431 : 37378;
     let type = draft ? "Draft pull request" : "Pull request"
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] " + type + " reopened: #" + pull_request["number"] + " " + pull_request["title"],
-                "url": pull_request["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] ${type} reopened: #${pull_request.number} ${pull_request.title}`,
+                url: pull_request["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": color
+                color: color
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPullClose(json: any) {
+function buildPullClose(json: any): string {
     const { pull_request, repository, sender } = json;
 
-    let merged = pull_request["merged"];
+    let merged = pull_request.merged;
     let color = merged ? 8866047 : 16722234;
     let status = merged ? "merged" : "closed";
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Pull request " + status + ": #" + pull_request["number"] + " " + pull_request["title"],
-                "url": pull_request["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Pull request ${status}: #${pull_request.number} ${pull_request.title}`,
+                url: pull_request["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": color
+                color: color
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
-function buildPull(json: any, env: BoundEnv) {
+function buildPull(json: any, env: BoundEnv): string | null {
     const { pull_request, repository, sender } = json;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
-    let draft = pull_request["draft"];
+    let draft = pull_request.draft;
     let color = draft ? 10987431 : 37378;
     let type = draft ? "Draft pull request" : "Pull request"
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] " + type + " opened: #" + pull_request["number"] + " " + pull_request["title"],
-                "description": truncate(pull_request["body"], 1000),
-                "url": pull_request["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] ${type} opened: #${pull_request.number} ${pull_request.title}`,
+                description: truncate(pull_request.body, 1000),
+                url: pull_request["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": color
+                color: color
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
-function buildIssueComment(json: any, env: BoundEnv) {
+function buildIssueComment(json: any, env: BoundEnv): string | null {
     const { issue, comment, repository, sender } = json;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
@@ -553,237 +504,197 @@ function buildIssueComment(json: any, env: BoundEnv) {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New comment on " + entity + ": #" + issue["number"] + " " + issue["title"],
-                "description": truncate(comment["body"], 1000),
-                "url": comment["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New comment on ${entity}: #${issue.number} ${issue.title}`,
+                description: truncate(comment.body, 1000),
+                url: comment["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 11373312
+                color: 11373312
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildIssueClose(json: any) {
+function buildIssueClose(json: any): string {
     const { issue, repository, sender } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Issue closed: #" + issue["number"] + " " + issue["title"],
-                "url": issue["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Issue closed: #${issue.number} ${issue.title}`,
+                url: issue["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 16730159
+                color: 16730159
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
 function buildIssueReOpen(json: any): string {
     const { issue, repository, sender } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Issue reopened: #" + issue["number"] + " " + issue["title"],
-                "url": issue["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Issue reopened: #${issue.number} ${issue.title}`,
+                url: issue["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 16743680
+                color: 16743680
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
 function buildIssue(json: any, env: BoundEnv): string | null {
     const { issue, repository, sender } = json;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Issue opened: #" + issue["number"] + " " + issue["title"],
-                "description": truncate(issue["body"], 1000),
-                "url": issue["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Issue opened: #${issue.number} ${issue.title}`,
+                description: truncate(issue.body, 1000),
+                url: issue["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 16743680
+                color: 16743680
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPackagePublished(json: any) {
+function buildPackagePublished(json: any): string {
     const { sender, repository } = json;
-    const pkg = "package" in json ? json["package"] : json["registry_package"];
+    const pkg = "package" in json ? json.package : json["registry_package"];
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Package Published: " + pkg["namespace"] + "/" + pkg["name"],
-                "url": pkg["package_version"]["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Package Published: ${pkg.namespace}/${pkg.name}`,
+                url: pkg["package_version"]["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 37378
+                color: 37378
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildPackageUpdated(json: any) {
+function buildPackageUpdated(json: any): string {
     const { sender, repository } = json;
-    const pkg = "package" in json ? json["package"] : json["registry_package"];
+    const pkg = "package" in json ? json.package : json["registry_package"];
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Package Updated: " + pkg["namespace"] + "/" + pkg["name"],
-                "url": pkg["package_version"]["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Package Updated: ${pkg.namespace}/${pkg.name}`,
+                url: pkg["package_version"]["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 37378
+                color: 37378
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
-function buildFork(json: any) {
+function buildFork(json: any): string {
     const { sender, repository, forkee } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Fork Created: " + forkee["full_name"],
-                "url": forkee["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Fork Created: ${forkee["full_name"]}`,
+                url: forkee["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 16562432
+                color: 16562432
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
 function buildDiscussionComment(json: any, env: BoundEnv): string | null {
     const { discussion, comment, repository, sender } = json;
     const { category } = discussion;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New comment on discussion: #" + discussion["number"] + " " + discussion["title"],
-                "description": truncate(comment["body"], 1000),
-                "url": comment["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New comment on discussion: #${discussion.number} ${discussion.title}`,
+                description: truncate(comment.body, 1000),
+                url: comment["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 35446,
+                color: 35446,
                 "footer": {
-                    "text": "Discussion Category: " + category["name"]
+                    "text": `Discussion Category: ${category.name}`
                 }
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
 function buildDiscussion(json: any, env: BoundEnv): string | null {
     const { discussion, repository, sender } = json;
     const { category } = discussion;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New discussion: #" + discussion["number"] + " " + discussion["title"],
-                "description": truncate(discussion["body"], 1000),
-                "url": discussion["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New discussion: #${discussion.number} ${discussion.title}`,
+                description: truncate(discussion.body, 1000),
+                url: discussion["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 9737471,
+                color: 9737471,
                 "footer": {
-                    "text": "Discussion Category: " + category["name"]
+                    "text": `Discussion Category: ${category.name}`
                 }
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string}
- */
 function buildDeleteBranch(json: any, env: BoundEnv): string | null {
     const { ref, ref_type, repository, sender } = json;
 
@@ -795,27 +706,22 @@ function buildDeleteBranch(json: any, env: BoundEnv): string | null {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] " + ref_type + " deleted: " + ref,
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] ${ref_type} deleted: ${ref}`,
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 1
+                color: 1
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string}
- */
 function buildCreateBranch(json: any, env: BoundEnv): string | null {
     const { ref, ref_type, repository, sender } = json;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
@@ -826,52 +732,42 @@ function buildCreateBranch(json: any, env: BoundEnv): string | null {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New " + ref_type + " created: " + ref,
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New ${ref_type} created: ${ref}`,
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 1
+                color: 1
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
 function buildCommitComment(json: any, env: BoundEnv): string | null {
     const { sender, comment, repository } = json;
 
-    if (env.isIgnoredUser(sender["login"])) {
+    if (env.isIgnoredUser(sender.login)) {
         return null;
     }
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New comment on commit `" + shortCommit(comment["commit_id"]) + "`",
-                "description": truncate(comment["body"], 1000),
-                "url": comment["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New comment on commit \`${shortCommit(comment["commit_id"])}\``,
+                description: truncate(comment.body, 1000),
+                url: comment["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 1
+                color: 1
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @param {BoundEnv} env
- * @return {string|null}
- */
 function buildCheck(json: any, env: BoundEnv): string | null {
     const { check_run, repository, sender } = json;
     const { conclusion, output, html_url, check_suite } = check_run;
@@ -888,8 +784,8 @@ function buildCheck(json: any, env: BoundEnv): string | null {
 
     if (check_suite["pull_requests"].length > 0) {
         let pull = check_suite["pull_requests"][0];
-        if (pull["url"].startsWith("https://api.github.com/repos/" + repository["full_name"])) {
-            target = "PR #" + pull["number"]
+        if (pull.url.startsWith(`https://api.github.com/repos/${repository["full_name"]}`)) {
+            target = `PR #${pull.number}`
         }
     }
 
@@ -912,36 +808,36 @@ function buildCheck(json: any, env: BoundEnv): string | null {
 
     let fields = [
         {
-            "name": "Action Name",
-            "value": check_run["name"],
+            name: "Action Name",
+            "value": check_run.name,
             "inline": true
         }
     ];
 
-    if (output["title"] != null) {
+    if (output.title != null) {
         fields.push({
-            "name": "Output Title",
-            "value": output["title"],
+            name: "Output Title",
+            "value": output.title,
             "inline": true });
     }
 
-    if (output["summary"] != null) {
+    if (output.summary != null) {
         fields.push({
-            "name": "Output Summary",
-            "value": output["summary"],
+            name: "Output Summary",
+            "value": output.summary,
             "inline": false});
     }
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Actions check " + status + " on " + target,
-                "url": html_url,
-                "color": color,
+                title: `[${repository["full_name"]}] Actions check ${status} on ${target}`,
+                url: html_url,
+                color: color,
                 "fields": fields,
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
             }
@@ -949,33 +845,25 @@ function buildCheck(json: any, env: BoundEnv): string | null {
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
 function buildStar(json: any): string {
     const { sender, repository } = json;
 
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] New star added",
-                "url": repository["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] New star added`,
+                url: repository["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 16562432
+                color: 16562432
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string}
- */
 function buildDeployment(json: any) {
     const { deployment, repository, sender } = json;
     const { description, payload } = deployment;
@@ -983,23 +871,19 @@ function buildDeployment(json: any) {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Deployment started for " + description,
-                "url": payload["web_url"] === null ? "" : payload["web_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Deployment started for ${description}`,
+                url: payload["web_url"] === null ? "" : payload["web_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": 11158713
+                color: 11158713
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string|null}
- */
 function buildDeploymentStatus(json: any) {
     const { deployment, deployment_status, repository, sender } = json;
     const { description, payload } = deployment;
@@ -1028,23 +912,19 @@ function buildDeploymentStatus(json: any) {
     return JSON.stringify({
         "embeds": [
             {
-                "title": "[" + repository["full_name"] + "] Deployment for " + description + " " + term,
-                "url": payload["web_url"] === null ? "" : payload["web_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: `[${repository["full_name"]}] Deployment for ${description} ${term}`,
+                url: payload["web_url"] === null ? "" : payload["web_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "color": color
+                color: color
             }
         ]
     });
 }
 
-/**
- * @param {*} json
- * @return {string|null}
- */
 function buildWiki(json: any): string | null {
     const { pages, sender, repository } = json;
 
@@ -1063,10 +943,10 @@ function buildWiki(json: any): string | null {
         }
 
         // Wrap the title in a markdown with the link to the page.
-        let title = "[" + pages[i]["title"] + "](" + pages[i]["html_url"] + ")";
+        let title = `[${pages[i].title}](${pages[i]["html_url"]})`;
 
         // Capitalize the first letter of the action, then prepend it to the title.
-        titles.push(action.charAt(0).toUpperCase() + action.slice(1) + ": " + title);
+        titles.push(`${action.charAt(0).toUpperCase() + action.slice(1)}: ${title}`);
     }
 
     // If there are no pages, return null.
@@ -1089,40 +969,35 @@ function buildWiki(json: any): string | null {
         color = 16562432;
     } else {
         if (created > 0 && edited > 0) {
-            message = created + " page" + (created > 1 ? "s" : "") + " were created and " + edited + " " + (edited > 1 ? "were" : "was") + " edited";
+            message = `${created} page${created > 1 ? "s" : ""} were created and ${edited} ${edited > 1 ? "were" : "was"} edited`;
         } else {
-            message = Math.max(created, edited) + " pages were " + (created > 0 ? "created" : "edited");
+            message = `${Math.max(created, edited)} pages were ${created > 0 ? "created" : "edited"}`;
         }
         // Set the color to blue.
         color = 6120164;
     }
 
     // Prepend the repository title to the message.
-    message = "[" + repository["full_name"] + "] " + message;
+    message = `[${repository["full_name"]}] ${message}`;
 
     // Build the embed, with the sender as the author, the message as the title, and the edited pages as the description.
     return JSON.stringify({
         "embeds": [
             {
-                "title": message,
-                "url": repository["html_url"],
-                "author": {
-                    "name": sender["login"],
-                    "url": sender["html_url"],
+                title: message,
+                url: repository["html_url"],
+                author: {
+                    name: sender.login,
+                    url: sender["html_url"],
                     "icon_url": sender["avatar_url"]
                 },
-                "description": titles.join("\n"),
-                "color": color
+                description: titles.join("\n"),
+                color: color
             }
         ]
     });
 }
 
-/**
- * Responds with an uncaught error.
- * @param error
- * @returns {Response}
- */
 function handleError(error: any): Response {
     console.error('Uncaught error:', error)
 
