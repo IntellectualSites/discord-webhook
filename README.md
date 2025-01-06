@@ -8,6 +8,16 @@ You can use this Cloudflare worker by following the steps after clicking the but
 
 This repository is based on [JRoy/disgit](https://github.com/JRoy/disgit), deploying to IntellectualSites' CF workers via GitHub actions.
 
+You can also deploy this using docker/docker-compose by cloning this repo and running
+`docker compose up --build -d`. The worker will be started on port 8080.
+
+## Environment Variables
+digit has the following optional environment variables that you can use to customize your instance;
+- `IGNORED_BRANCHES_REGEX` - A regex pattern for branches that should be ignored
+- `IGNORED_BRANCHES` - A comma seperated list of branches that should be ignored
+- `IGNORED_USERS` - A comma seperated list of users that should be ignored
+- `IGNORED_PAYLOADS` - A comma seperated list of webhook events that should be ignored
+
 ## Supported Events
 The following webhook events are supported as of now;
 * [check_run](https://docs.github.com/en/developers/webhooks-and-events/webhook-events-and-payloads#check_run)
